@@ -10,7 +10,7 @@ app.secret_key = os.environ.get("SECRET_KEY", "dev_secret_key")
 
 # Database setup
 db_url = os.environ.get("DATABASE_URL", "sqlite:///chat.db")
-db_url = db_url.replace("postgres://", "postgresql://")  # fix for SQLAlchemy
+db_url = db_url.replace("postgres://", "postgresql://")  # fix for NeonDB
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
@@ -20,7 +20,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
-    about_me = db.Column(db.String(500), default="")
+    about = db.Column(db.String(500), default="")
     messages = db.relationship("Message", backref="user", lazy=True)
 
 class Message(db.Model):
@@ -31,14 +31,14 @@ class Message(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 # --- Helpers ---
-def current_user():
+def get_current_user():
     if "user_id" in session:
         return User.query.get(session["user_id"])
     return None
 
 def login_required(f):
     def wrapper(*args, **kwargs):
-        if not current_user():
+        if not get_current_user():
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     wrapper.__name__ = f.__name__
@@ -46,7 +46,8 @@ def login_required(f):
 
 # --- Template wrapper ---
 def render_page(title, content):
-    base = """<!doctype html>
+    base_template = """
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -84,13 +85,14 @@ body { background: linear-gradient(to right, #1abc9c, #3498db); min-height:100vh
 {{ content|safe }}
 </div>
 </body>
-</html>"""
-    return render_template_string(base, title=title, current_user=current_user(), content=content)
+</html>
+"""
+    return render_template_string(base_template, title=title, current_user=get_current_user(), content=content)
 
 # --- Routes ---
 @app.route("/")
 def index():
-    if current_user():
+    if get_current_user():
         return redirect(url_for("chat"))
     return render_page("Home", """
     <div class="text-center text-white">
@@ -107,20 +109,18 @@ def register():
         username = request.form["username"].strip()
         password = request.form["password"]
         confirm = request.form["confirm"]
-        about_me = request.form["about_me"].strip()
+        about_me = request.form["about"].strip()
         if password != confirm:
             return render_page("Register", "<p class='text-danger'>Passwords do not match!</p>")
         if User.query.filter_by(username=username).first():
             return render_page("Register", "<p class='text-danger'>Username already exists!</p>")
-
         user = User(username=username,
                     password_hash=generate_password_hash(password),
-                    about_me=about_me)
+                    about=about_me)
         db.session.add(user)
         db.session.commit()
         session["user_id"] = user.id
         return redirect(url_for("chat"))
-
     return render_page("Register", """
     <div class="card p-4 mx-auto" style="max-width:400px;">
       <h3 class="mb-3">Register</h3>
@@ -128,7 +128,7 @@ def register():
         <input name="username" class="form-control mb-2" placeholder="Username" required>
         <input type="password" name="password" class="form-control mb-2" placeholder="Password" required>
         <input type="password" name="confirm" class="form-control mb-2" placeholder="Confirm Password" required>
-        <textarea name="about_me" class="form-control mb-2" placeholder="About me..."></textarea>
+        <textarea name="about" class="form-control mb-2" placeholder="About me..."></textarea>
         <button class="btn btn-success w-100">Register</button>
       </form>
     </div>
@@ -144,7 +144,6 @@ def login():
             return render_page("Login", "<p class='text-danger'>Invalid credentials!</p>")
         session["user_id"] = user.id
         return redirect(url_for("chat"))
-
     return render_page("Login", """
     <div class="card p-4 mx-auto" style="max-width:400px;">
       <h3 class="mb-3">Login</h3>
@@ -167,16 +166,16 @@ def chat():
     if request.method == "POST":
         subject = request.form["subject"].strip()
         content = request.form["content"].strip()
-        if content and subject:
-            m = Message(user_id=current_user().id, subject=subject, content=content)
-            db.session.add(m)
+        if subject and content:
+            msg = Message(user_id=get_current_user().id, subject=subject, content=content)
+            db.session.add(msg)
             db.session.commit()
         return redirect(url_for("chat"))
 
-    msgs = Message.query.order_by(Message.created_at.asc()).all()
     messages_html = ""
-    for m in msgs:
-        if m.user_id == current_user().id:
+    messages = Message.query.order_by(Message.created_at.asc()).all()
+    for m in messages:
+        if m.user_id == get_current_user().id:
             messages_html += f"""
             <div class="chat-bubble chat-me">
                 <strong>{m.subject}</strong><br>{m.content}
@@ -208,7 +207,7 @@ def profile(username):
     <div class="card p-4">
       <a href="{{{{ url_for('index') }}}}" class="btn btn-light btn-sm mb-3">🏠 Home</a>
       <h3>{user.username}</h3>
-      <p>{user.about_me or "No bio yet."}</p>
+      <p>{user.about or "No bio yet."}</p>
     </div>
     """)
 
