@@ -80,7 +80,7 @@ body { background: linear-gradient(to right, #1abc9c, #3498db); min-height:100vh
   </div>
 </nav>
 <div class="container py-4">
-{{ content }}
+{{ content|safe }}
 </div>
 </body>
 </html>"""
