@@ -7,7 +7,12 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # ---------- Flask Config ----------
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-me")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///chat.db").replace("postgres://", "postgresql://")
+
+# Database: Prefer NeonDB (Postgres), fallback to SQLite
+db_url = os.environ.get("DATABASE_URL", "sqlite:///chat.db")
+# NeonDB URLs often start with postgres:// but SQLAlchemy needs postgresql://
+db_url = db_url.replace("postgres://", "postgresql://")
+app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
@@ -48,7 +53,7 @@ def render_page(title, body):
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ title }}</title>
+<title>{{ title }} • Chatterbox</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
 :root{ --bg1:#0ea5a1; --bg2:#1d4ed8; }
@@ -60,7 +65,7 @@ body{ background:linear-gradient(180deg,var(--bg1),#e6fffb); min-height:100vh; }
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark">
   <div class="container">
-    <a class="navbar-brand" href="{{ url_for('index') }}">BlueGreen Chat</a>
+    <a class="navbar-brand" href="{{ url_for('index') }}">Chatterbox</a>
     <div class="ms-auto">
       {% if cu %}
         <a href="{{ url_for('profile', username=cu.username) }}" class="text-white me-3">{{ cu.username }}</a>
@@ -89,7 +94,7 @@ def index():
     if current_user():
         return redirect(url_for("chat"))
     return render_page("Home", f"""
-    <h1>Welcome to BlueGreen Chat</h1>
+    <h1>Welcome to Chatterbox</h1>
     <p>Please login or register to chat.</p>
     <a href="{url_for('login')}" class="btn btn-primary">Login</a>
     <a href="{url_for('register')}" class="btn btn-secondary">Register</a>
