@@ -4,11 +4,10 @@ from flask import Flask, render_template_string, request, redirect, url_for, ses
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# --- App Setup ---
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev_secret")
 
-# Database URL (NeonDB / fallback SQLite)
+# PostgreSQL / NeonDB
 db_url = os.environ.get("DATABASE_URL", "sqlite:///chat.db").replace("postgres://", "postgresql://")
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -19,7 +18,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
-    about_me = db.Column(db.String(500), default="")
+    about_me = db.Column(db.String(500), default="")  # ensure matches model
     messages = db.relationship("Message", backref="user", lazy=True)
 
 class Message(db.Model):
@@ -107,7 +106,6 @@ def register():
         password = request.form["password"]
         confirm = request.form["confirm"]
         about_me = request.form["about_me"].strip()
-
         if password != confirm:
             return render_page("Register", "<p class='text-danger'>Passwords do not match!</p>")
         if User.query.filter_by(username=username).first():
@@ -139,11 +137,9 @@ def login():
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
-
         user = User.query.filter_by(username=username).first()
         if not user or not check_password_hash(user.password_hash, password):
             return render_page("Login", "<p class='text-danger'>Invalid credentials!</p>")
-
         session["user_id"] = user.id
         return redirect(url_for("chat"))
 
