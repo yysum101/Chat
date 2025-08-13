@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from flask import Flask, render_template_string, request, redirect, url_for, session, abort
+from flask import Flask, render_template_string, request, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -8,7 +8,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev_secret_key")
 
-# Database setup (NeonDB or fallback SQLite)
+# Database setup
 db_url = os.environ.get("DATABASE_URL", "sqlite:///chat.db")
 db_url = db_url.replace("postgres://", "postgresql://")  # fix for SQLAlchemy
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
@@ -218,4 +218,4 @@ with app.app_context():
 
 # --- Run ---
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=False)
