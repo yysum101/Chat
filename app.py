@@ -1,218 +1,137 @@
-import os
-from datetime import datetime
-from flask import Flask, render_template_string, request, redirect, url_for, session
-from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import generate_password_hash, check_password_hash
-
-# --- App setup ---
+# ---------- Flask Config ----------
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "dev_secret")
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///chat.db").replace("postgres://", "postgresql://")
 
-# Database (NeonDB/PostgreSQL or fallback SQLite)
-db_url = os.environ.get("DATABASE_URL", "sqlite:///chat.db").replace("postgres://", "postgresql://")
+# Database: Prefer NeonDB (Postgres), fallback to SQLite
+db_url = os.environ.get("DATABASE_URL", "sqlite:///chat.db")
+# NeonDB URLs often start with postgres:// but SQLAlchemy needs postgresql://
+db_url = db_url.replace("postgres://", "postgresql://")
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
-# --- Models ---
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash = db.Column(db.String(200), nullable=False)
-    about_me = db.Column(db.String(500), default="")
-    messages = db.relationship("Message", backref="user", lazy=True)
-
-class Message(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    subject = db.Column(db.String(200), nullable=False)
-    content = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-# --- Helpers ---
-def current_user():
-    if "user_id" in session:
-        return User.query.get(session["user_id"])
-    return None
-
-def login_required(f):
-    def wrapper(*args, **kwargs):
-        if not current_user():
-            return redirect(url_for("login"))
-        return f(*args, **kwargs)
-    wrapper.__name__ = f.__name__
-    return wrapper
-
-# --- Template wrapper ---
-def render_page(title, content):
-    base = """<!doctype html>
-<html lang="en">
+@@ -48,7 +53,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
 <title>{{ title }} • Chatterbox</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
-body { background: linear-gradient(to right, #1abc9c, #3498db); min-height:100vh; }
-.navbar { background-color: rgba(0,0,0,0.8) !important; }
-.card { background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-.chat-container { max-height:400px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
-.chat-bubble { padding:10px 15px; border-radius:15px; max-width:70%; }
-.chat-me { background-color:#34d399; align-self:flex-end; color:white; }
-.chat-other { background-color:#3b82f6; align-self:flex-start; color:white; }
-.small-text { font-size:0.7rem; color:#eee; margin-top:2px; }
-</style>
-</head>
+:root{ --bg1:#0ea5a1; --bg2:#1d4ed8; }
+@@ -60,7 +65,7 @@
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark">
-  <div class="container">
+ <div class="container">
+    <a class="navbar-brand" href="{{ url_for('index') }}">BlueGreen Chat</a>
     <a class="navbar-brand" href="{{ url_for('index') }}">Chatterbox</a>
-    <div>
-      {% if current_user %}
-        <a href="{{ url_for('chat') }}" class="btn btn-success btn-sm">Chat</a>
-        <a href="{{ url_for('profile', username=current_user.username) }}" class="btn btn-info btn-sm">Profile</a>
-        <a href="{{ url_for('logout') }}" class="btn btn-danger btn-sm">Logout</a>
-      {% else %}
-        <a href="{{ url_for('login') }}" class="btn btn-primary btn-sm">Login</a>
-        <a href="{{ url_for('register') }}" class="btn btn-warning btn-sm">Register</a>
-      {% endif %}
-    </div>
-  </div>
-</nav>
-<div class="container py-4">
-{{ content|safe }}
-</div>
-</body>
-</html>"""
-    return render_template_string(base, title=title, current_user=current_user(), content=content)
+   <div class="ms-auto">
+     {% if cu %}
+       <a href="{{ url_for('profile', username=cu.username) }}" class="text-white me-3">{{ cu.username }}</a>
+@@ -89,104 +94,104 @@
+if current_user():
+return redirect(url_for("chat"))
+return render_page("Home", f"""
+    <h1>Welcome to BlueGreen Chat</h1>
+    <h1>Welcome to Chatterbox</h1>
+   <p>Please login or register to chat.</p>
+   <a href="{url_for('login')}" class="btn btn-primary">Login</a>
+   <a href="{url_for('register')}" class="btn btn-secondary">Register</a>
+   """)
 
-# --- Routes ---
-@app.route("/")
-def index():
-    if current_user():
-        return redirect(url_for("chat"))
-    return render_page("Home", """
-    <div class="text-center text-white">
-      <h1 class="mb-4">Welcome to Chatterbox</h1>
-      <p class="lead">Login or register to start chatting!</p>
-      <a href="{{ url_for('login') }}" class="btn btn-primary">Login</a>
-      <a href="{{ url_for('register') }}" class="btn btn-warning">Register</a>
-    </div>
-    """)
-
-@app.route("/register", methods=["GET", "POST"])
+@app.route("/register", methods=["GET","POST"])
 def register():
-    if request.method == "POST":
-        username = request.form["username"].strip()
-        password = request.form["password"]
-        confirm = request.form["confirm"]
-        about_me = request.form["about_me"].strip()
-        if password != confirm:
-            return render_page("Register", "<p class='text-danger'>Passwords do not match!</p>")
-        if User.query.filter_by(username=username).first():
-            return render_page("Register", "<p class='text-danger'>Username already exists!</p>")
+if current_user():
+return redirect(url_for("chat"))
+if request.method == "POST":
+username = request.form["username"].strip()
+pw = request.form["password"]
+pw2 = request.form["confirm"]
+about = request.form.get("about","").strip()
+if not username or not pw or not pw2:
+flash("Fill all required fields")
+elif pw != pw2:
+flash("Passwords do not match")
+elif User.query.filter_by(username=username).first():
+flash("Username taken")
+else:
+u = User(username=username, about=about)
+u.set_password(pw)
+db.session.add(u)
+db.session.commit()
+flash("Registered! Please login.")
+return redirect(url_for("login"))
+return render_page("Register", f"""
+   <h2>Create Account</h2>
+   <form method="post">
+     <div class="mb-3"><label>Username</label><input name="username" class="form-control" required></div>
+     <div class="mb-3"><label>About myself</label><input name="about" class="form-control"></div>
+     <div class="mb-3"><label>Password</label><input type="password" name="password" class="form-control" required></div>
+     <div class="mb-3"><label>Confirm Password</label><input type="password" name="confirm" class="form-control" required></div>
+     <button class="btn btn-primary">Register</button>
+   </form>""")
 
-        user = User(username=username,
-                    password_hash=generate_password_hash(password),
-                    about_me=about_me)
-        db.session.add(user)
-        db.session.commit()
-        session["user_id"] = user.id
-        return redirect(url_for("chat"))
-
-    return render_page("Register", """
-    <div class="card p-4 mx-auto" style="max-width:400px;">
-      <h3 class="mb-3">Register</h3>
-      <form method="POST">
-        <input name="username" class="form-control mb-2" placeholder="Username" required>
-        <input type="password" name="password" class="form-control mb-2" placeholder="Password" required>
-        <input type="password" name="confirm" class="form-control mb-2" placeholder="Confirm Password" required>
-        <textarea name="about_me" class="form-control mb-2" placeholder="About me..."></textarea>
-        <button class="btn btn-success w-100">Register</button>
-      </form>
-    </div>
-    """)
-
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login", methods=["GET","POST"])
 def login():
-    if request.method == "POST":
-        username = request.form["username"]
-        password = request.form["password"]
-        user = User.query.filter_by(username=username).first()
-        if not user or not check_password_hash(user.password_hash, password):
-            return render_page("Login", "<p class='text-danger'>Invalid credentials!</p>")
-        session["user_id"] = user.id
-        return redirect(url_for("chat"))
-
-    return render_page("Login", """
-    <div class="card p-4 mx-auto" style="max-width:400px;">
-      <h3 class="mb-3">Login</h3>
-      <form method="POST">
-        <input name="username" class="form-control mb-2" placeholder="Username" required>
-        <input type="password" name="password" class="form-control mb-2" placeholder="Password" required>
-        <button class="btn btn-primary w-100">Login</button>
-      </form>
-    </div>
-    """)
+if current_user():
+return redirect(url_for("chat"))
+if request.method == "POST":
+username = request.form["username"]
+pw = request.form["password"]
+u = User.query.filter_by(username=username).first()
+if u and u.check_password(pw):
+session["uid"] = u.id
+return redirect(url_for("chat"))
+else:
+flash("Invalid login")
+return render_page("Login", f"""
+   <h2>Login</h2>
+   <form method="post">
+     <div class="mb-3"><label>Username</label><input name="username" class="form-control" required></div>
+     <div class="mb-3"><label>Password</label><input type="password" name="password" class="form-control" required></div>
+     <button class="btn btn-primary">Login</button>
+   </form>""")
 
 @app.route("/logout")
 def logout():
-    session.clear()
-    return redirect(url_for("index"))
+session.clear()
+return redirect(url_for("index"))
 
-@app.route("/chat", methods=["GET", "POST"])
-@login_required
+@app.route("/chat", methods=["GET","POST"])
 def chat():
-    if request.method == "POST":
-        subject = request.form["subject"].strip()
-        content = request.form["content"].strip()
-        if content and subject:
-            m = Message(user_id=current_user().id, subject=subject, content=content)
-            db.session.add(m)
-            db.session.commit()
-        return redirect(url_for("chat"))
-
-    msgs = Message.query.order_by(Message.created_at.asc()).all()
-    messages_html = ""
-    for m in msgs:
-        if m.user_id == current_user().id:
-            messages_html += f"""
-            <div class="chat-bubble chat-me">
-                <strong>{m.subject}</strong><br>{m.content}
-                <div class="small-text">{m.created_at.strftime('%H:%M')}</div>
-            </div>"""
-        else:
-            messages_html += f"""
-            <div class="chat-bubble chat-other">
-                <strong>{m.user.username} - {m.subject}</strong><br>{m.content}
-                <div class="small-text">{m.created_at.strftime('%H:%M')}</div>
-            </div>"""
-
-    return render_page("Chat", f"""
-    <h4 class="text-white">Chat Room</h4>
-    <a href="{{{{ url_for('index') }}}}" class="btn btn-light btn-sm mb-3">🏠 Home</a>
-    <div class="chat-container mb-3">{messages_html}</div>
-    <form method="POST" class="mb-3">
-        <input name="subject" class="form-control mb-2" placeholder="Subject" required>
-        <textarea name="content" class="form-control mb-2" placeholder="Message body..." required></textarea>
-        <button class="btn btn-success w-100">Send</button>
-    </form>
-    """)
+if not current_user():
+return redirect(url_for("login"))
+if request.method == "POST":
+msg = request.form.get("message","").strip()
+if msg:
+m = Message(user_id=current_user().id, content=msg)
+db.session.add(m)
+db.session.commit()
+return redirect(url_for("chat"))
+msgs = Message.query.order_by(Message.created_at.desc()).limit(20).all()
+messages_html = "".join(
+f"<div class='mb-2'><strong><a href='{url_for('profile', username=m.author.username)}'>{m.author.username}</a>:</strong> {m.content} <small class='text-muted'>{m.created_at.strftime('%H:%M')}</small></div>"
+for m in reversed(msgs)
+)
+return render_page("Chat", f"""
+   <h2>Chat Room</h2>
+   <div class="mb-3" style="max-height:300px;overflow:auto;">{messages_html}</div>
+   <form method="post" class="d-flex">
+     <input name="message" class="form-control me-2" placeholder="Type a message..." required>
+     <button class="btn btn-primary">Send</button>
+   </form>
+   """)
 
 @app.route("/profile/<username>")
-@login_required
 def profile(username):
-    user = User.query.filter_by(username=username).first_or_404()
-    return render_page(f"{user.username}'s Profile", f"""
-    <div class="card p-4">
-      <a href="{{{{ url_for('index') }}}}" class="btn btn-light btn-sm mb-3">🏠 Home</a>
-      <h3>{user.username}</h3>
-      <p>{user.about_me or "No bio yet."}</p>
-    </div>
-    """)
+if not current_user():
+return redirect(url_for("login"))
+u = User.query.filter_by(username=username).first_or_404()
+return render_page(f"{u.username}'s Profile", f"""
+   <h2>{u.username}</h2>
+   <p><strong>About:</strong> {u.about or 'No info'}</p>
+   """)
 
-# --- Run ---
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-    app.run(host="0.0.0.0", port=5000)
+app.run(host="0.0.0.0", port=5000)
