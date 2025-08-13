@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from flask import Flask, render_template_string, request, redirect, url_for, session, abort
+from flask import Flask, render_template_string, request, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -8,7 +8,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev_secret")
 
-# NeonDB / SQLite fallback
+# Database URL (NeonDB / fallback SQLite)
 db_url = os.environ.get("DATABASE_URL", "sqlite:///chat.db").replace("postgres://", "postgresql://")
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -20,7 +20,6 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
     about_me = db.Column(db.String(500), default="")
-
     messages = db.relationship("Message", backref="user", lazy=True)
 
 class Message(db.Model):
@@ -44,46 +43,48 @@ def login_required(f):
     wrapper.__name__ = f.__name__
     return wrapper
 
-# --- HTML Template Wrapper ---
+# --- Template Wrapper ---
 def render_page(title, content):
-    base = f"""<!doctype html>
+    base = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{{{ title }}}} • Chatterbox</title>
+<title>{{ title }} • Chatterbox</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
-body {{ background: linear-gradient(to right, #1abc9c, #3498db); min-height:100vh; }}
-.navbar {{ background-color: rgba(0,0,0,0.8) !important; }}
-.card {{ background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }}
-.chat-container {{ max-height:400px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding:10px; background:white; border-radius:12px; }}
-.chat-bubble {{ padding:10px 15px; border-radius:15px; max-width:70%; }}
-.chat-me {{ background-color:#34d399; align-self:flex-end; color:white; }}
-.chat-other {{ background-color:#3b82f6; align-self:flex-start; color:white; }}
-.small-text {{ font-size:0.7rem; color:#333; margin-top:2px; }}
+body { background: linear-gradient(to right, #1abc9c, #3498db); min-height:100vh; }
+.navbar { background-color: rgba(0,0,0,0.8) !important; }
+.card { background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+.chat-container { max-height:400px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
+.chat-bubble { padding:10px 15px; border-radius:15px; max-width:70%; }
+.chat-me { background-color:#34d399; align-self:flex-end; color:white; }
+.chat-other { background-color:#3b82f6; align-self:flex-start; color:white; }
+.small-text { font-size:0.7rem; color:#eee; margin-top:2px; }
 </style>
 </head>
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark">
   <div class="container">
-    <a class="navbar-brand" href="{{{{ url_for('index') }}}}">Chatterbox</a>
+    <a class="navbar-brand" href="{{ url_for('index') }}">Chatterbox</a>
     <div>
       {% if current_user %}
-        <a href="{{{{ url_for('chat') }}}}" class="btn btn-success btn-sm">Chat</a>
-        <a href="{{{{ url_for('profile', username=current_user.username) }}}}" class="btn btn-info btn-sm">Profile</a>
-        <a href="{{{{ url_for('logout') }}}}" class="btn btn-danger btn-sm">Logout</a>
+        <a href="{{ url_for('chat') }}" class="btn btn-success btn-sm">Chat</a>
+        <a href="{{ url_for('profile', username=current_user.username) }}" class="btn btn-info btn-sm">Profile</a>
+        <a href="{{ url_for('logout') }}" class="btn btn-danger btn-sm">Logout</a>
       {% else %}
-        <a href="{{{{ url_for('login') }}}}" class="btn btn-primary btn-sm">Login</a>
-        <a href="{{{{ url_for('register') }}}}" class="btn btn-warning btn-sm">Register</a>
+        <a href="{{ url_for('login') }}" class="btn btn-primary btn-sm">Login</a>
+        <a href="{{ url_for('register') }}" class="btn btn-warning btn-sm">Register</a>
       {% endif %}
     </div>
   </div>
 </nav>
-<div class="container py-4">{content}</div>
+<div class="container py-4">
+{{ content }}
+</div>
 </body>
 </html>"""
-    return render_template_string(base, title=title, current_user=current_user())
+    return render_template_string(base, title=title, current_user=current_user(), content=content)
 
 # --- Routes ---
 @app.route("/")
@@ -191,16 +192,14 @@ def chat():
             </div>"""
 
     return render_page("Chat", f"""
-    <div class="card p-3">
-        <h4>Chat Room</h4>
-        <a href="{{{{ url_for('index') }}}}" class="btn btn-light btn-sm mb-3">🏠 Home</a>
-        <div class="chat-container mb-3">{messages_html}</div>
-        <form method="POST" class="mb-3">
-            <input name="subject" class="form-control mb-2" placeholder="Subject" required>
-            <textarea name="content" class="form-control mb-2" placeholder="Message body..." required></textarea>
-            <button class="btn btn-success w-100">Send</button>
-        </form>
-    </div>
+    <h4 class="text-white">Chat Room</h4>
+    <a href="{{{{ url_for('index') }}}}" class="btn btn-light btn-sm mb-3">🏠 Home</a>
+    <div class="chat-container mb-3">{messages_html}</div>
+    <form method="POST" class="mb-3">
+        <input name="subject" class="form-control mb-2" placeholder="Subject" required>
+        <textarea name="content" class="form-control mb-2" placeholder="Message body..." required></textarea>
+        <button class="btn btn-success w-100">Send</button>
+    </form>
     """)
 
 @app.route("/profile/<username>")
