@@ -4,10 +4,11 @@ from flask import Flask, render_template_string, request, redirect, url_for, ses
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 
+# --- App setup ---
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev_secret")
 
-# PostgreSQL / NeonDB
+# Database (NeonDB/PostgreSQL or fallback SQLite)
 db_url = os.environ.get("DATABASE_URL", "sqlite:///chat.db").replace("postgres://", "postgresql://")
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -18,7 +19,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
-    about_me = db.Column(db.String(500), default="")  # ensure matches model
+    about_me = db.Column(db.String(500), default="")
     messages = db.relationship("Message", backref="user", lazy=True)
 
 class Message(db.Model):
@@ -42,7 +43,7 @@ def login_required(f):
     wrapper.__name__ = f.__name__
     return wrapper
 
-# --- Template Wrapper ---
+# --- Template wrapper ---
 def render_page(title, content):
     base = """<!doctype html>
 <html lang="en">
